@@ -67,6 +67,7 @@ export function registerTasks(server: McpServer, api: tasks_v1.Tasks) {
       const requestBody: tasks_v1.Schema$Task = Object.fromEntries(
         Object.entries(fields).filter(([, v]) => v !== undefined),
       );
+      if (fields.status === 'needsAction') requestBody.completed = null;
       if (scheduledDate !== undefined)
         requestBody.due = scheduledDate === null ? null : `${scheduledDate}T00:00:00.000Z`;
       if (!Object.keys(requestBody).length) throw new UserError('Supply at least one task field to update.');

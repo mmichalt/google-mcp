@@ -190,18 +190,24 @@ describe('Tasks', () => {
       expect(tasks.tasks.patch).not.toHaveBeenCalled();
     },
   );
-  it('patches only supplied fields including clearing dates and reopening tasks', async () => {
+  it('patches supplied fields and clears the completion timestamp when reopening tasks', async () => {
     await call('tasks_update_task', { tasklist: '@default', task: 'task', status: 'completed' });
     expect(tasks.tasks.patch).toHaveBeenLastCalledWith({
       tasklist: '@default',
       task: 'task',
       requestBody: { status: 'completed' },
     });
+    await call('tasks_update_task', { tasklist: '@default', task: 'task', status: 'needsAction' });
+    expect(tasks.tasks.patch).toHaveBeenLastCalledWith({
+      tasklist: '@default',
+      task: 'task',
+      requestBody: { status: 'needsAction', completed: null },
+    });
     await call('tasks_update_task', { tasklist: '@default', task: 'task', status: 'needsAction', scheduledDate: null });
     expect(tasks.tasks.patch).toHaveBeenLastCalledWith({
       tasklist: '@default',
       task: 'task',
-      requestBody: { status: 'needsAction', due: null },
+      requestBody: { status: 'needsAction', completed: null, due: null },
     });
     expect(tasks.tasks.get).not.toHaveBeenCalled();
   });
