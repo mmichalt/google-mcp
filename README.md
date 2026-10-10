@@ -11,7 +11,7 @@ npm ci
 npm run check
 ```
 
-`check` runs ESLint, TypeScript, mocked Vitest tests, and builds `dist/`. Runtime dependencies are `@modelcontextprotocol/server`, `googleapis`, `google-auth-library`, and `zod`. The lockfile records the tested versions. Official documentation and npm versions were checked on October 8, 2026; this implementation uses MCP server 2.3.1 and googleapis 184.0.0. Tests do not need Google credentials.
+`check` runs Biome (lint and import sorting), Prettier formatting checks, TypeScript, mocked Vitest tests, and builds `dist/`. Use `npm run lint:fix` to apply import sorting and safe lint fixes, and `npm run format` to format code and configuration. Both tools respect `.gitignore` and exclude the npm lockfile; Prettier also excludes Markdown. GitHub Actions runs these checks on pushes and pull requests using Node 24. Runtime dependencies are `@modelcontextprotocol/server`, `googleapis`, `google-auth-library`, and `zod`. The lockfile records the tested versions. Official documentation and npm versions were checked on October 8, 2026; this implementation uses MCP server 2.3.1 and googleapis 184.0.0. Tests do not need Google credentials.
 
 ## Google Cloud setup
 

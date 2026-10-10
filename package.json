@@ -13,9 +13,12 @@
     "auth": "npm run build && node dist/scripts/setup-auth.js",
     "doctor": "npm run build && node dist/scripts/doctor.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "npm run build && vitest run",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
@@ -24,11 +27,11 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@modelcontextprotocol/client": "^2.3.1",
     "@types/node": "^26.6.4",
-    "eslint": "^10.12.0",
+    "prettier": "3.9.10",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"
   }
 }

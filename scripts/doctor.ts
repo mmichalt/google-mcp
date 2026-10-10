@@ -1,6 +1,7 @@
 import { readConfig } from '../src/config.js';
 import { loadAuth } from '../src/google/auth.js';
-import { createClients, apiCall, safeError } from '../src/google/client.js';
+import { apiCall, createClients, safeError } from '../src/google/client.js';
+
 async function doctor() {
   const config = readConfig();
   const { client, flush } = await loadAuth(config);
@@ -20,7 +21,12 @@ async function doctor() {
     } else console.error('Forms connectivity untested: pass a known form ID: npm run doctor -- FORM_ID');
   }
 }
-void doctor().catch(error => {
-  console.error(error instanceof Error && /^(Authorization|Enabled services|OAuth client|Cannot read Desktop|Cannot securely)/.test(error.message) ? error.message : safeError(error));
+void doctor().catch((error) => {
+  console.error(
+    error instanceof Error &&
+      /^(Authorization|Enabled services|OAuth client|Cannot read Desktop|Cannot securely)/.test(error.message)
+      ? error.message
+      : safeError(error),
+  );
   process.exitCode = 1;
 });
