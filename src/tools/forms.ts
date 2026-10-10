@@ -59,7 +59,7 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
     if (index > (form.items?.length ?? 0)) throw new UserError('Index exceeds the form item count.');
     return update(input.formId, form, [{ createItem: { item: questionItem(input.question, input.itemId), location: { index } } }], input.dryRun, input.expectedRevisionId);
   }, false);
-  register(server, 'forms_update_question', 'Edit a supported single question identified by itemId. Keeps question IDs, grading, images, description and unrelated items. Changing question type requires explicit consent.', {
+  register(server, 'forms_update_question', 'Edit a supported single question by itemId. Preserves grading only when compatible; choice edits must retain every correct answer, and graded questions cannot change type.', {
     ...edit, itemId: id, question: questionSchema, allowTypeChange: z.boolean().default(false),
   }, async input => {
     const form = await get(input.formId);
@@ -76,7 +76,8 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
     if (typeChanged && old.grading) throw new UserError('Questions with grading cannot change type. Update their grading manually in Google Forms first.');
     if (kind === 'choiceQuestion' && old.grading?.correctAnswers) {
       const options = newQuestion.choiceQuestion?.options ?? [];
-      if (old.grading.correctAnswers.answers?.some(answer => !answer.value || !options.some(option => option.value === answer.value))) {
+      const answers = old.grading.correctAnswers.answers;
+      if (!answers?.length || answers.some(answer => !answer.value || !options.some(option => option.value === answer.value))) {
         throw new UserError('Choice options must retain every existing correct answer. Update the grading manually in Google Forms before removing or renaming one.');
       }
     }
