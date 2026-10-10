@@ -4,13 +4,21 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { type Config, readConfig } from './config.js';
 import { loadAuth } from './google/auth.js';
 import { type Clients, createClients } from './google/client.js';
+import { registerDocs } from './tools/docs.js';
 import { registerDrive } from './tools/drive.js';
 import { registerForms } from './tools/forms.js';
+import { registerMeet } from './tools/meet.js';
+import { registerSheets } from './tools/sheets.js';
+import { registerTasks } from './tools/tasks.js';
 
 export function createServer(config: Config, clients: Clients) {
   const server = new McpServer({ name: 'google-mcp', version: '0.1.0' });
   if (config.services.includes('forms')) registerForms(server, clients.forms);
-  if (config.services.includes('drive')) registerDrive(server, clients.drive);
+  if (config.services.includes('drive')) registerDrive(server, clients.drive, config.attachments);
+  if (config.services.includes('tasks')) registerTasks(server, clients.tasks);
+  if (config.services.includes('sheets')) registerSheets(server, clients.sheets);
+  if (config.services.includes('docs')) registerDocs(server, clients.docs);
+  if (config.services.includes('meet')) registerMeet(server, clients.meet);
   return server;
 }
 async function main() {

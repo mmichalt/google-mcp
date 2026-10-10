@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env) {
   const services = z
-    .array(z.enum(['forms', 'drive']))
+    .array(z.enum(['forms', 'drive', 'tasks', 'sheets', 'docs', 'meet']))
     .min(1)
     .parse((env.GOOGLE_MCP_SERVICES ?? 'forms,drive').split(',').map((s) => s.trim()));
   const attachments = z.enum(['true', 'false']).parse(env.GOOGLE_MCP_DRIVE_ATTACHMENTS ?? 'false') === 'true';
@@ -26,6 +26,10 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env) {
             : 'https://www.googleapis.com/auth/drive.metadata.readonly',
         ]
       : []),
+    ...(services.includes('tasks') ? ['https://www.googleapis.com/auth/tasks'] : []),
+    ...(services.includes('sheets') ? ['https://www.googleapis.com/auth/spreadsheets'] : []),
+    ...(services.includes('docs') ? ['https://www.googleapis.com/auth/documents'] : []),
+    ...(services.includes('meet') ? ['https://www.googleapis.com/auth/meetings.space.readonly'] : []),
   ];
   return {
     services,
