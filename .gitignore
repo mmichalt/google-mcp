@@ -147,3 +147,14 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local OAuth and build artifacts
+.env
+.env.*
+!.env.example
+credentials*.json
+client_secret*.json
+tokens*.json
+.google-mcp/
+dist/
+coverage/
