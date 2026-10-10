@@ -111,7 +111,7 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
           }),
         false,
       ),
-    false,
+    { readOnly: false, idempotent: false },
   );
   register(
     server,
@@ -141,7 +141,7 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
         input.expectedRevisionId,
       );
     },
-    false,
+    { readOnly: false, idempotent: true },
   );
   register(
     server,
@@ -169,7 +169,7 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
         input.expectedRevisionId,
       );
     },
-    false,
+    { readOnly: false, idempotent: true },
   );
   register(
     server,
@@ -240,8 +240,7 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
         input.expectedRevisionId,
       );
     },
-    false,
-    true,
+    { readOnly: false, destructive: true, idempotent: true },
   );
   register(
     server,
@@ -271,8 +270,7 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
         input.expectedRevisionId,
       );
     },
-    false,
-    true,
+    { readOnly: false, destructive: true, idempotent: true },
   );
   register(
     server,
@@ -330,7 +328,6 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
       if (input.dryRun) return { dryRun: true, formId: input.formId, requestBody };
       return apiCall(() => api.forms.setPublishSettings({ formId: input.formId, requestBody }), false);
     },
-    false,
-    true,
+    { readOnly: false, destructive: true, idempotent: true },
   );
 }

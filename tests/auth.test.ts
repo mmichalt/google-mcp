@@ -101,6 +101,22 @@ it('configures service scopes independently and requires explicit attachment opt
   expect(() => readConfig({ GOOGLE_MCP_SERVICES: 'forms', GOOGLE_MCP_DRIVE_ATTACHMENTS: 'true' })).toThrow();
   expect(() => readConfig({ GOOGLE_MCP_AUTH_DIR: './local' })).toThrow('absolute');
 });
+it.each([
+  ['tasks', 'tasks'],
+  ['sheets', 'spreadsheets'],
+  ['docs', 'documents'],
+  ['meet', 'meetings.space.readonly'],
+])('requests only the %s scope when selected and requires reauthorization', async (service, scope) => {
+  const cfg = readConfig({ GOOGLE_MCP_AUTH_DIR: directory, GOOGLE_MCP_SERVICES: service });
+  expect(cfg.scopes).toEqual([`https://www.googleapis.com/auth/${scope}`]);
+  await saveTokens(cfg.tokenPath, saved);
+  await expect(loadAuth(cfg)).rejects.toThrow('additional authorization');
+});
+it('keeps the default scopes unchanged and excludes every opt-in service', () => {
+  const cfg = readConfig({});
+  expect(cfg.services).toEqual(['forms', 'drive']);
+  expect(cfg.scopes).toEqual([...saved.scopes, 'https://www.googleapis.com/auth/drive.metadata.readonly']);
+});
 it.each([429, 500, 503])('retries transient read failure %s with bounded backoff', async (status) => {
   const operation = vi.fn().mockRejectedValueOnce({ response: { status } }).mockResolvedValue({ data: 'ok' });
   const sleep = vi.fn().mockResolvedValue(undefined);

@@ -1,11 +1,22 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { OAuth2Client } from 'google-auth-library';
+import { docs_v1 } from 'googleapis/build/src/apis/docs/v1.js';
 import { drive_v3 } from 'googleapis/build/src/apis/drive/v3.js';
 import { forms_v1 } from 'googleapis/build/src/apis/forms/v1.js';
+import { meet_v2 } from 'googleapis/build/src/apis/meet/v2.js';
+import { sheets_v4 } from 'googleapis/build/src/apis/sheets/v4.js';
+import { tasks_v1 } from 'googleapis/build/src/apis/tasks/v1.js';
 
 export function createClients(auth: OAuth2Client) {
   const options = { auth, retry: false, timeout: 30000 };
-  return { forms: new forms_v1.Forms(options), drive: new drive_v3.Drive(options) };
+  return {
+    forms: new forms_v1.Forms(options),
+    drive: new drive_v3.Drive(options),
+    tasks: new tasks_v1.Tasks(options),
+    sheets: new sheets_v4.Sheets(options),
+    docs: new docs_v1.Docs(options),
+    meet: new meet_v2.Meet(options),
+  };
 }
 export type Clients = ReturnType<typeof createClients>;
 export class UserError extends Error {}
@@ -33,10 +44,10 @@ export function safeError(error: unknown): string {
     return 'Google denied access. Check account sharing, enabled APIs, consent scopes, and Workspace policy; rerun npm run auth if scopes changed.';
   if (status === 404) return 'Google resource not found or inaccessible. Check the ID and account.';
   if (status === 400 || status === 409 || status === 412)
-    return 'Google rejected the input or form revision. Retrieve the latest form and review the change before retrying.';
+    return 'Google rejected the request or detected a conflict. Read the latest resource and review the input or revision before retrying.';
   return 'Google request failed. Check connectivity and run npm run doctor. A write may have succeeded; inspect the resource before retrying.';
 }
-// Retry reads only: a lost write response must never create a duplicate form or question.
+// Retry reads only: a lost write response must never duplicate a change.
 export async function apiCall<T>(
   operation: () => Promise<{ data: T }>,
   readOnly = true,
