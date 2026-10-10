@@ -72,7 +72,15 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
     const newQuestion = requireValue(next.questionItem?.question, 'Missing question.');
     const kinds = ['textQuestion', 'choiceQuestion', 'scaleQuestion', 'dateQuestion', 'timeQuestion'] as const;
     const kind = kinds.find(k => newQuestion[k] != null)!;
-    if (old[kind] == null || (kind === 'choiceQuestion' && old.choiceQuestion?.type !== newQuestion.choiceQuestion?.type)) {
+    const typeChanged = old[kind] == null || (kind === 'choiceQuestion' && old.choiceQuestion?.type !== newQuestion.choiceQuestion?.type);
+    if (typeChanged && old.grading) throw new UserError('Questions with grading cannot change type. Update their grading manually in Google Forms first.');
+    if (kind === 'choiceQuestion' && old.grading?.correctAnswers) {
+      const options = newQuestion.choiceQuestion?.options ?? [];
+      if (old.grading.correctAnswers.answers?.some(answer => !answer.value || !options.some(option => option.value === answer.value))) {
+        throw new UserError('Choice options must retain every existing correct answer. Update the grading manually in Google Forms before removing or renaming one.');
+      }
+    }
+    if (typeChanged) {
       if (!input.allowTypeChange) throw new UserError('Changing question type can affect existing answers. Set allowTypeChange=true after reviewing the form.');
     }
     // Narrow masks preserve grading, images, descriptions and all other question metadata.
