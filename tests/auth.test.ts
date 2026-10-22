@@ -97,7 +97,7 @@ it('configures service scopes independently and requires explicit attachment opt
   expect(readConfig({ GOOGLE_MCP_SERVICES: 'drive', GOOGLE_MCP_DRIVE_ATTACHMENTS: 'true' }).scopes).toEqual([
     'https://www.googleapis.com/auth/drive.readonly',
   ]);
-  expect(() => readConfig({ GOOGLE_MCP_SERVICES: 'gmail' })).toThrow();
+  expect(() => readConfig({ GOOGLE_MCP_SERVICES: 'unknown' })).toThrow();
   expect(() => readConfig({ GOOGLE_MCP_SERVICES: 'forms', GOOGLE_MCP_DRIVE_ATTACHMENTS: 'true' })).toThrow();
   expect(() => readConfig({ GOOGLE_MCP_AUTH_DIR: './local' })).toThrow('absolute');
 });
@@ -116,6 +116,23 @@ it('keeps the default scopes unchanged and excludes every opt-in service', () =>
   const cfg = readConfig({});
   expect(cfg.services).toEqual(['forms', 'drive']);
   expect(cfg.scopes).toEqual([...saved.scopes, 'https://www.googleapis.com/auth/drive.metadata.readonly']);
+  expect(cfg.gmailSend).toBe(false);
+});
+it.each([
+  ['calendar', ['calendar.calendarlist.readonly', 'calendar.events', 'calendar.events.freebusy']],
+  ['gmail', ['gmail.readonly', 'gmail.compose']],
+] as const)('requests only %s scopes and rejects old authorization', async (service, scopes) => {
+  const cfg = readConfig({ GOOGLE_MCP_AUTH_DIR: directory, GOOGLE_MCP_SERVICES: service });
+  expect(cfg.scopes).toEqual(scopes.map((scope) => `https://www.googleapis.com/auth/${scope}`));
+  await saveTokens(cfg.tokenPath, saved);
+  await expect(loadAuth(cfg)).rejects.toThrow('additional authorization');
+});
+it('requires Gmail for sending opt-in and documents that compose already grants sending', () => {
+  expect(() => readConfig({ GOOGLE_MCP_GMAIL_SEND: 'true' })).toThrow('Enable gmail');
+  expect(() => readConfig({ GOOGLE_MCP_SERVICES: 'gmail', GOOGLE_MCP_GMAIL_SEND: 'yes' })).toThrow();
+  const enabled = readConfig({ GOOGLE_MCP_SERVICES: 'gmail', GOOGLE_MCP_GMAIL_SEND: 'true' });
+  expect(enabled.gmailSend).toBe(true);
+  expect(enabled.scopes).toEqual(readConfig({ GOOGLE_MCP_SERVICES: 'gmail' }).scopes);
 });
 it.each([429, 500, 503])('retries transient read failure %s with bounded backoff', async (status) => {
   const operation = vi.fn().mockRejectedValueOnce({ response: { status } }).mockResolvedValue({ data: 'ok' });

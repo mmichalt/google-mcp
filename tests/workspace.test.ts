@@ -81,7 +81,7 @@ describe('service discovery and diagnostics', () => {
     expect(tools).toHaveLength(count);
     expect(tools.every((tool) => tool.name.startsWith(`${service}_`))).toBe(true);
   });
-  it('exposes all 31 tools and conservative write annotations', async () => {
+  it('exposes 31 tools for the original six services and conservative write annotations', async () => {
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(31);
     for (const name of [

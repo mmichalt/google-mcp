@@ -64,6 +64,14 @@ it.skipIf(process.env.GOOGLE_MCP_INTEGRATION !== 'true')(
       if (transcript)
         await apiCall(() => apis.meet.conferenceRecords.transcripts.entries.list({ parent: transcript, pageSize: 1 }));
     }
+    if (config.services.includes('calendar')) {
+      await apiCall(() => apis.calendar.calendarList.list({ maxResults: 1 }));
+      await apiCall(() => apis.calendar.events.list({ calendarId: 'primary', maxResults: 1 }));
+    }
+    if (config.services.includes('gmail')) {
+      await apiCall(() => apis.gmail.users.getProfile({ userId: 'me' }));
+      await apiCall(() => apis.gmail.users.messages.list({ userId: 'me', maxResults: 1 }));
+    }
     await flush();
   },
   60000,

@@ -1,8 +1,10 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { OAuth2Client } from 'google-auth-library';
+import { calendar_v3 } from 'googleapis/build/src/apis/calendar/v3.js';
 import { docs_v1 } from 'googleapis/build/src/apis/docs/v1.js';
 import { drive_v3 } from 'googleapis/build/src/apis/drive/v3.js';
 import { forms_v1 } from 'googleapis/build/src/apis/forms/v1.js';
+import { gmail_v1 } from 'googleapis/build/src/apis/gmail/v1.js';
 import { meet_v2 } from 'googleapis/build/src/apis/meet/v2.js';
 import { sheets_v4 } from 'googleapis/build/src/apis/sheets/v4.js';
 import { tasks_v1 } from 'googleapis/build/src/apis/tasks/v1.js';
@@ -16,6 +18,8 @@ export function createClients(auth: OAuth2Client) {
     sheets: new sheets_v4.Sheets(options),
     docs: new docs_v1.Docs(options),
     meet: new meet_v2.Meet(options),
+    calendar: new calendar_v3.Calendar(options),
+    gmail: new gmail_v1.Gmail(options),
   };
 }
 export type Clients = ReturnType<typeof createClients>;

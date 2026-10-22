@@ -4,9 +4,11 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { type Config, readConfig } from './config.js';
 import { loadAuth } from './google/auth.js';
 import { type Clients, createClients } from './google/client.js';
+import { registerCalendar } from './tools/calendar.js';
 import { registerDocs } from './tools/docs.js';
 import { registerDrive } from './tools/drive.js';
 import { registerForms } from './tools/forms.js';
+import { registerGmail } from './tools/gmail.js';
 import { registerMeet } from './tools/meet.js';
 import { registerSheets } from './tools/sheets.js';
 import { registerTasks } from './tools/tasks.js';
@@ -19,6 +21,8 @@ export function createServer(config: Config, clients: Clients) {
   if (config.services.includes('sheets')) registerSheets(server, clients.sheets);
   if (config.services.includes('docs')) registerDocs(server, clients.docs);
   if (config.services.includes('meet')) registerMeet(server, clients.meet);
+  if (config.services.includes('calendar')) registerCalendar(server, clients.calendar);
+  if (config.services.includes('gmail')) registerGmail(server, clients.gmail, config.gmailSend);
   return server;
 }
 async function main() {

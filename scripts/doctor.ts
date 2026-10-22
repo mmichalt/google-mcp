@@ -51,6 +51,14 @@ export async function checkServices(
     await apiCall(() => apis.meet.conferenceRecords.list({ pageSize: 1 }));
     report('Meet read connectivity: OK');
   }
+  if (config.services.includes('calendar')) {
+    await apiCall(() => apis.calendar.calendarList.list({ maxResults: 1 }));
+    report('Calendar list connectivity: OK; event writes and free/busy untested.');
+  }
+  if (config.services.includes('gmail')) {
+    await apiCall(() => apis.gmail.users.getProfile({ userId: 'me' }));
+    report('Gmail profile connectivity: OK; message bodies, drafts and sending untested.');
+  }
 }
 
 async function doctor() {
