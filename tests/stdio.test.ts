@@ -8,12 +8,12 @@ import { readConfig } from '../src/config.js';
 import { saveTokens } from '../src/google/auth.js';
 
 it.each([
-  { services: 'forms,drive', attachments: 'false', count: 14 },
-  { services: 'tasks', attachments: 'false', count: 4 },
-  { services: 'forms,drive,tasks,sheets,docs,meet', attachments: 'true', count: 31 },
+  { services: 'forms,drive', attachments: 'false', gmailSend: 'false', count: 14 },
+  { services: 'tasks', attachments: 'false', gmailSend: 'false', count: 4 },
+  { services: 'forms,drive,tasks,sheets,docs,meet,calendar,gmail', attachments: 'true', gmailSend: 'true', count: 42 },
 ])(
   'discovers $count tools from compiled stdio with $services without live credentials',
-  async ({ services, attachments, count }) => {
+  async ({ services, attachments, gmailSend, count }) => {
     const directory = await mkdtemp(join(tmpdir(), 'google-mcp-stdio-'));
     const client = new Client({ name: 'stdio-smoke', version: '1.0.0' });
     try {
@@ -25,6 +25,7 @@ it.each([
         GOOGLE_MCP_AUTH_DIR: directory,
         GOOGLE_MCP_SERVICES: services,
         GOOGLE_MCP_DRIVE_ATTACHMENTS: attachments,
+        GOOGLE_MCP_GMAIL_SEND: gmailSend,
       };
       const config = readConfig(env);
       await saveTokens(config.tokenPath, {

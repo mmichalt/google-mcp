@@ -2,7 +2,7 @@
 
 A standalone Google Workspace MCP server for local developer tools. Node.js + strict TypeScript, the official MCP v2 server SDK, Google's official API/OAuth libraries, Zod, and stdio. No application-specific workflows, database, web app, or deployment infrastructure.
 
-Forms and Drive metadata are enabled by default (14 tools). Tasks, Sheets, Docs and Meet are independent opt-ins; Drive text access requires a separate content opt-in. Enabling everything exposes 31 tools. All writes avoid automatic retries.
+Forms and Drive metadata are enabled by default (14 tools). Tasks, Sheets, Docs, Meet, Calendar and Gmail are independent opt-ins; Drive text access and Gmail sending have separate flags. Enabling all services and Drive text access exposes 41 tools; enabling Gmail sending adds one more (42 total). All writes avoid automatic retries.
 
 ## Requirements and installation
 
@@ -18,7 +18,7 @@ npm run check
 ## Google Cloud setup
 
 1. Create or select a dedicated project in [Google Cloud Console](https://console.cloud.google.com/).
-2. In **APIs & Services → Library**, enable the corresponding **Google Forms API**, **Google Drive API**, **Google Tasks API**, **Google Sheets API**, **Google Docs API**, or **Google Meet API**. Enable only the services you use.
+2. In **APIs & Services → Library**, enable the corresponding **Google Forms API**, **Google Drive API**, **Google Tasks API**, **Google Sheets API**, **Google Docs API**, **Google Meet API**, **Google Calendar API**, or **Gmail API**. Enable only the services you use.
 3. In **Google Auth Platform**, configure branding, audience, and data access (OAuth consent). Choose Internal if your Workspace organization supports it; otherwise External. For an External app in Testing, add your Google account as a test user. Workspace administrators may need to allow the app/scopes. External Testing refresh tokens commonly expire after seven days; use an appropriate production consent configuration for longer-lived usage. Broader scopes can require verification when distributing an app to others.
 4. Create an OAuth client of type **Desktop app**, and download its JSON credentials. A Web application OAuth client is not supported by this server. Keep the JSON outside repositories, preferably in the private auth directory below, named `credentials.json`. Do not share it.
 5. Choose your enabled services and authorize them using the commands below. No manually generated refresh token is needed.
@@ -33,10 +33,11 @@ Configuration uses environment variables. `.env.example` is a template; the prog
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `GOOGLE_MCP_SERVICES` | `forms,drive` | Comma-separated enabled services: `forms`, `drive`, `tasks`, `sheets`, `docs`, `meet` |
+| `GOOGLE_MCP_SERVICES` | `forms,drive` | Comma-separated enabled services: `forms`, `drive`, `tasks`, `sheets`, `docs`, `meet`, `calendar`, `gmail` |
 | `GOOGLE_MCP_CREDENTIALS` | `<auth-dir>/credentials.json` | Absolute path to Desktop client JSON |
 | `GOOGLE_MCP_AUTH_DIR` | Platform location above | Absolute path to a dedicated, private directory shared across projects |
 | `GOOGLE_MCP_DRIVE_ATTACHMENTS` | `false` | Enables `drive_read_text` and broader read-only Drive content access, including files unrelated to attachments; requires `drive` |
+| `GOOGLE_MCP_GMAIL_SEND` | `false` | Exposes `gmail_send_message`; requires `gmail`. Tool-level gate only: Gmail's draft scope already permits sending |
 | `GOOGLE_MCP_AUTH_PORT` | `0` | Loopback callback port; `0` chooses a free port |
 
 Linux/macOS/WSL example:
@@ -70,23 +71,27 @@ Scopes are selected from enabled services:
 | Sheets | `spreadsheets` |
 | Docs | `documents` |
 | Meet | `meetings.space.readonly` |
+| Calendar | `calendar.calendarlist.readonly`, `calendar.events`, `calendar.events.freebusy` |
+| Gmail | `gmail.readonly`, `gmail.compose` |
 
 Scope names above have the prefix `https://www.googleapis.com/auth/`. Arbitrary existing forms need Forms access; `drive.file` would restrict discovery to app-authorized files. Drive tools never modify files. Default Drive access reads attachment **metadata**; response tools return uploaded-file references. The content flag retains its attachment-oriented name for compatibility, but enables text access to any accessible supported Drive file. Sheets and Docs writes use their own service scopes and require no writable Drive permission. Meet transcript entries require no Drive permission.
 
+Calendar requests event access, calendar-list reads and free/busy access without calendar or sharing management. Gmail's [read and compose scopes](https://developers.google.com/workspace/gmail/api/auth/scopes) are restricted scopes; public distribution can require verification. `gmail.compose` authorizes both drafts and sending at Google. `GOOGLE_MCP_GMAIL_SEND=false` hides the sending tool; it does not remove that OAuth capability. Enabling the sending tool after Gmail authorization needs no additional scope.
+
 Desktop OAuth does not support Google's incremental-authorization flow. When enabling another service, rerun auth to request exactly the current service scopes. Disabling a service stops registration of its tools, but does not revoke Google's previous grant; revoke the app under your Google account's connected apps if you also need to remove previously granted permissions, then authorize again. The server checks saved scope coverage before starting.
 
-`npm run doctor` checks access-token availability and cheap read connectivity for enabled Drive, Tasks and Meet services. A supplied form ID (or `GOOGLE_MCP_TEST_FORM_ID`) checks Forms. Set `GOOGLE_MCP_TEST_SPREADSHEET_ID` and `GOOGLE_MCP_TEST_DOCUMENT_ID` for Sheets and Docs checks. It explicitly reports resource-dependent services without IDs, and Drive content downloads, as untested. Diagnostics go to stderr; doctor never writes to Google.
+`npm run doctor` checks access-token availability and cheap read connectivity for enabled Drive, Tasks, Meet, Calendar (calendar list) and Gmail (profile) services. A supplied form ID (or `GOOGLE_MCP_TEST_FORM_ID`) checks Forms. Set `GOOGLE_MCP_TEST_SPREADSHEET_ID` and `GOOGLE_MCP_TEST_DOCUMENT_ID` for Sheets and Docs checks. It explicitly reports resource-dependent services without IDs, Drive content downloads, Calendar writes/free-busy, and Gmail bodies/drafts/sending as untested. Diagnostics go to stderr; doctor never writes to Google.
 
 To opt into additional services, enable their Cloud APIs, select the same services for auth and client registration, and rerun authorization:
 
 ```sh
-export GOOGLE_MCP_SERVICES='forms,drive,tasks,sheets,docs,meet'
+export GOOGLE_MCP_SERVICES='forms,drive,tasks,sheets,docs,meet,calendar,gmail'
 export GOOGLE_MCP_DRIVE_ATTACHMENTS='true'
 npm run auth
 npm run doctor
 ```
 
-Include matching `--env GOOGLE_MCP_SERVICES=...` and `--env GOOGLE_MCP_DRIVE_ATTACHMENTS=true` settings in the registration command below.
+Include matching `--env GOOGLE_MCP_SERVICES=...` and `--env GOOGLE_MCP_DRIVE_ATTACHMENTS=true` settings in the registration command below. To expose Gmail sending, also set `GOOGLE_MCP_GMAIL_SEND=true` in the MCP client's environment.
 
 ## Register globally in Codex
 
@@ -156,6 +161,17 @@ Tool results contain JSON in MCP text content. Validation and API errors return 
 | `meet_list_conferences` | Read one accessible conference page |
 | `meet_list_transcripts` | Read one page of existing transcript metadata |
 | `meet_list_transcript_entries` | Read one structured transcript-entry page |
+| `calendar_list_calendars` | Read one page of calendars with IDs, time zones and access roles |
+| `calendar_list_events` | Read one page of events/recurring instances in an explicit time window |
+| `calendar_get_event` | Read an event and its etag |
+| `calendar_freebusy` | Read busy intervals and per-calendar errors for up to 50 calendars |
+| `calendar_create_event` | Preview or create a single timed/all-day event, optionally with guests |
+| `calendar_update_event` | Preview or patch event text/times with etag protection |
+| `gmail_list_messages` | Search one page of message IDs with Gmail query syntax |
+| `gmail_get_message` | Read headers, decoded text/HTML parts and attachment metadata |
+| `gmail_get_thread` | Read a bounded thread with decoded text parts |
+| `gmail_create_draft` | Preview or create a new plain-text draft |
+| `gmail_send_message` | Preview or send a new plain-text message; sending opt-in and `confirmSend: true` required |
 
 Example arguments:
 
@@ -207,6 +223,16 @@ Docs edits accept `documentId`, optional `tabId`, `dryRun`, and optional `expect
 
 Meet tools accept `pageSize` (1–100) and `pageToken`. Conferences accept an optional [Meet filter expression](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords/list). Transcripts require `parent: "conferenceRecords/ID"`; entries require `parent: "conferenceRecords/ID/transcripts/ID"`. Both names come from the preceding list results. Empty transcript results without a continuation report `unavailable: true`; these tools retrieve existing accessible artifacts and never enable transcription. Entries retain speaker references, text and timestamps; generated Docs transcripts may differ after manual edits. [Structured entry reads](https://developers.google.com/workspace/meet/api/reference/rest/v2/conferenceRecords.transcripts.entries/list) use the Meet scope alone. Meet results have a 1 MiB JSON limit; use a smaller page if needed. Meeting creation, recording downloads and live media are unavailable.
 
+Calendar tools accept a returned `calendarId` or `primary`. Calendar/event lists use `pageSize` (1–100) and `pageToken`. Event lists require `timeMin` and `timeMax` as timestamps with explicit offsets, expand recurring instances and sort by start time. `calendar_freebusy` takes `calendarIds` (1–50) and the same time window. Returned per-calendar/group errors mean availability is unknown; never interpret an error as a free calendar. Results have a 1 MiB JSON limit.
+
+Calendar create requires `summary`, `start`, `end`, and an explicit `sendUpdates` policy (`all`, `externalOnly`, or `none`); `description`, `location`, and `attendees` (up to 100 email addresses) are optional. Times are either `{ "date": "2026-10-22" }` or `{ "dateTime": "2026-10-22T10:00:00+02:00", "timeZone": "Europe/Warsaw" }`, where `timeZone` is optional. Both endpoints must use the same representation and end after start. All-day end dates are exclusive. `dryRun: true` previews without writing. Google cautions that [`sendUpdates: "none"`](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert) can affect external calendar synchronization and some emails may still be sent.
+
+Calendar update accepts `eventId` and patches only supplied `summary`, `description`, `location`, or both `start` and `end`. Empty descriptions/locations clear those fields. It preserves attendees and unrelated properties, rejects recurring series masters and special/cancelled events, and allows ordinary recurring instances returned by event listing. Edits use [If-Match etag protection](https://developers.google.com/workspace/calendar/api/guides/version-resources); apply a reviewed preview with identical arguments and its `expectedEtag`. Creation, deletion, or editing of recurrence rules, guest-list updates and Meet-link creation are outside this version. An ambiguous creation failure may already have created the event; inspect the calendar before retrying.
+
+Gmail list accepts optional `q` using Gmail search syntax, `pageSize` (1–100), `pageToken`, and `includeSpamTrash` (default false). It returns message IDs and thread IDs, not bodies. Message/thread reads accept `messageId`/`threadId` and return native metadata and MIME part structure with decoded plain text or HTML in each part's `text` field. HTML stays a string; no external images or links are fetched. Attachment content is omitted; metadata and attachment IDs remain. Body parts stored separately by Gmail are also metadata-only. Unsupported text charsets/encoding fail explicitly. Read responses and resulting JSON are limited to 1 MiB; large threads must be read as individual messages, and oversized messages must be read in Gmail.
+
+Gmail draft creation accepts `to` (1–100 bare ASCII email addresses), a one-line `subject` (1–200 characters), `body` (up to 200,000 characters), and `dryRun`. Messages use the authenticated account's sender address and UTF-8 plain-text MIME. No attachments, CC/BCC, aliases, reply threading, draft updates or deletion are supported. With `GOOGLE_MCP_GMAIL_SEND=true`, `gmail_send_message` accepts the same fields plus required `confirmSend: true`. Preview with `dryRun: true`, review recipients/content, then apply the same arguments with `dryRun: false`. Previews are not durable plans. Creation and sending are attempted once; check Drafts or Sent after an ambiguous failure before trying again.
+
 ```json
 {"tool":"tasks_create_task","arguments":{"tasklist":"@default","title":"Review feedback","scheduledDate":"2026-10-12"}}
 {"tool":"tasks_update_task","arguments":{"tasklist":"@default","task":"TASK_ID","status":"completed"}}
@@ -219,6 +245,11 @@ Meet tools accept `pageSize` (1–100) and `pageToken`. Conferences accept an op
 {"tool":"docs_replace_text","arguments":{"documentId":"DOC_ID","tabId":"TAB_ID","searchText":"Draft","replacementText":"Final","expectedRevisionId":"PREVIEW_REVISION"}}
 {"tool":"meet_list_transcripts","arguments":{"parent":"conferenceRecords/CONFERENCE_ID","pageSize":20}}
 {"tool":"meet_list_transcript_entries","arguments":{"parent":"conferenceRecords/CONFERENCE_ID/transcripts/TRANSCRIPT_ID","pageSize":20}}
+{"tool":"calendar_list_events","arguments":{"calendarId":"primary","timeMin":"2026-10-22T00:00:00Z","timeMax":"2026-10-23T00:00:00Z"}}
+{"tool":"calendar_freebusy","arguments":{"calendarIds":["primary"],"timeMin":"2026-10-22T00:00:00Z","timeMax":"2026-10-23T00:00:00Z"}}
+{"tool":"calendar_create_event","arguments":{"calendarId":"primary","summary":"Review","start":{"dateTime":"2026-10-22T10:00:00Z"},"end":{"dateTime":"2026-10-22T11:00:00Z"},"sendUpdates":"none","dryRun":true}}
+{"tool":"gmail_list_messages","arguments":{"q":"is:unread newer_than:7d","pageSize":20}}
+{"tool":"gmail_create_draft","arguments":{"to":["reader@example.com"],"subject":"Review notes","body":"Here are the notes.","dryRun":true}}
 ```
 
 Workflow composition belongs in the MCP client: discover a Form, read its responses or `linkedSheetId` from `forms_get`, analyze the data, and write an explicit Sheets range or a Docs report. Likewise, read Meet transcript pages, draft notes in the client, then create a Doc and Tasks. No cross-service orchestration or proxy is needed.
@@ -241,7 +272,7 @@ See the [Form resource reference](https://developers.google.com/workspace/forms/
 
 **Secrets:** Token files are plaintext protected by OS access controls, not encryption. On POSIX, the server creates the dedicated auth directory with mode `0700` and token files with `0600`. On Windows, use a private user-profile directory with restrictive inherited NTFS ACLs; Node's Unix mode flags do not enforce Windows ACLs. For a custom location, ensure only your user can access it. Protect downloaded credentials the same way. Anyone with your local OS account's access can use these grants. Use separate auth directories for distinct accounts, and do not run multiple auth setup flows for the same directory at once. Excluded credential/token files must remain outside version control and synced public folders. If accidentally exposed, revoke the Google app grant and replace affected credentials.
 
-**Data and logs:** Google error payloads, request objects, OAuth credentials and tokens are never included in diagnostics or MCP error responses. Auth setup prints only the public authorization URL (which contains a short-lived state/PKCE challenge). Tool results intentionally contain requested form content, respondent data, uploaded-file references, owner metadata, permissions, file/document text, spreadsheet values, tasks and meeting transcripts; treat your MCP client and its conversation history as trusted recipients. Tokens/scopes may remain granted after disabling tools until revoked at Google.
+**Data and logs:** Google error payloads, request objects, OAuth credentials and tokens are never included in diagnostics or MCP error responses. Auth setup prints only the public authorization URL (which contains a short-lived state/PKCE challenge). Tool results intentionally contain requested form content, respondent data, uploaded-file references, owner metadata, permissions, file/document text, spreadsheet values, tasks, meeting transcripts, calendar events and email content; treat your MCP client and its conversation history as trusted recipients. Tokens/scopes may remain granted after disabling tools until revoked at Google.
 
 ## Testing and adding services
 
@@ -253,6 +284,8 @@ GOOGLE_MCP_INTEGRATION=true GOOGLE_MCP_TEST_FORM_ID=YOUR_FORM_ID npm test
 
 For PowerShell, set the integration variables with `$env:NAME = 'value'` before `npm test`, and remove them afterward. The live test reads enabled services only and creates or modifies nothing. Forms requires `GOOGLE_MCP_TEST_FORM_ID`; Sheets requires `GOOGLE_MCP_TEST_SPREADSHEET_ID`; Docs requires `GOOGLE_MCP_TEST_DOCUMENT_ID`. Tasks reads one list and one task page from `GOOGLE_MCP_TEST_TASKLIST_ID` (default `@default`). Meet lists one conference page and optionally reads transcript metadata/entries from `GOOGLE_MCP_TEST_CONFERENCE_NAME` and `GOOGLE_MCP_TEST_TRANSCRIPT_NAME`. Drive reads discovery and, if a form ID is provided, its metadata. Live tests are skipped by default; no live reads or writes were verified for these new integrations. Validate writes manually on explicitly selected disposable resources before relying on them in production.
 
-Compiled stdio smoke tests check default discovery (14 tools), Tasks alone (4), and all opt-ins (31), using fake credentials without network calls. Mocked API tests run through an actual MCP client and cover scope gating, pagination, input/payload bounds, streaming failures, RAW/formula behavior, nested tabs, revision conflicts, and writes attempted once after ambiguous failures.
+Calendar live tests read one calendar page and one primary-calendar event page. Gmail live tests read the profile and one message-ID page; they do not read email bodies, create drafts or send mail.
 
-To add another service, implement its tools in `src/tools/`, add the official typed API client in `src/google/client.ts`, add its opt-in service/scopes in `src/config.ts`, and register conditionally in `src/server.ts`. Reuse OAuth and the small registration/error helpers; keep new services disabled by default. Calendar, Gmail, Slides, Chat, People, Keep, cross-service search and event watchers remain outside this implementation. Google's [Workspace MCP catalog](https://developers.google.com/workspace/guides/configure-mcp-servers) provides remote options for several of those services; refresh its preview coverage before planning local equivalents.
+Compiled stdio smoke tests check default discovery (14 tools), Tasks alone (4), and all opt-ins (42), using fake credentials without network calls. Mocked API tests run through an actual MCP client and cover scope/sending gates, pagination, input/payload bounds, streaming failures, RAW/formula behavior, nested tabs, revision/etag conflicts, Calendar dates and notifications, MIME decoding/encoding, header injection, and writes attempted once after ambiguous failures.
+
+To add another service, implement its tools in `src/tools/`, add the official typed API client in `src/google/client.ts`, add its opt-in service/scopes in `src/config.ts`, and register conditionally in `src/server.ts`. Reuse OAuth and the small registration/error helpers; keep new services disabled by default. Slides, Chat, People, Keep, cross-service search and event watchers remain outside this implementation. Google's [Workspace MCP catalog](https://developers.google.com/workspace/guides/configure-mcp-servers) provides remote options for several of those services; refresh its preview coverage before planning local equivalents.
