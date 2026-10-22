@@ -18,9 +18,19 @@ const compose = {
   body: z.string().max(200000),
   dryRun: z.boolean().default(false),
 };
-function partText(part: gmail_v1.Schema$MessagePart): gmail_v1.Schema$MessagePart & { text?: string } {
+function partText(
+  part: gmail_v1.Schema$MessagePart,
+  parentAttachment = false,
+): gmail_v1.Schema$MessagePart & { text?: string } {
+  const isAttachment =
+    parentAttachment ||
+    !!part.filename ||
+    !!part.headers?.some(
+      (header) =>
+        header.name?.toLowerCase() === 'content-disposition' && /^\s*attachment\s*(?:;|$)/i.test(header.value ?? ''),
+    );
   let text: string | undefined;
-  if (!part.filename && /^text\/(plain|html)$/i.test(part.mimeType ?? '') && part.body?.data) {
+  if (!isAttachment && /^text\/(plain|html)$/i.test(part.mimeType ?? '') && part.body?.data) {
     const contentType = part.headers?.find((header) => header.name?.toLowerCase() === 'content-type')?.value ?? '';
     const charset = /charset\s*=\s*(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
     try {
@@ -36,7 +46,7 @@ function partText(part: gmail_v1.Schema$MessagePart): gmail_v1.Schema$MessagePar
     ...part,
     body: part.body ? { size: part.body.size, attachmentId: part.body.attachmentId } : undefined,
     text,
-    parts: part.parts?.map(partText),
+    parts: part.parts?.map((child) => partText(child, isAttachment)),
   };
 }
 function messageText(message: gmail_v1.Schema$Message) {

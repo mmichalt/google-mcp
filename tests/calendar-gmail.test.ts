@@ -288,6 +288,48 @@ describe('Gmail', () => {
     gmail.users.threads.get.mockResolvedValue({ data: { id: 'thread', messages: [data] } });
     expect((await call('gmail_get_thread', { threadId: 'thread' })).messages[0]).toEqual(result);
   });
+  it.each(['text/plain', 'text/html', 'multipart/alternative'])(
+    'keeps unnamed %s attachments metadata-only in messages and threads',
+    async (mimeType) => {
+      const secret = 'attachment-secret';
+      const encoded = Buffer.from(secret).toString('base64url');
+      const data = {
+        id: 'msg',
+        payload: {
+          mimeType: 'multipart/mixed',
+          parts: [
+            {
+              mimeType: 'text/plain',
+              headers: [{ name: 'Content-Disposition', value: 'inline' }],
+              body: { data: Buffer.from('Message body').toString('base64url') },
+            },
+            ...['attachment', '  AtTaChMeNt \t; creation-date="today"'].map((disposition) => ({
+              mimeType,
+              filename: '',
+              headers: [{ name: 'cOnTeNt-DiSpOsItIoN', value: disposition }],
+              body: { data: encoded, size: secret.length, attachmentId: 'att' },
+              parts:
+                mimeType === 'multipart/alternative'
+                  ? [{ mimeType: 'text/plain', body: { data: encoded, size: secret.length } }]
+                  : undefined,
+            })),
+          ],
+        },
+      };
+      gmail.users.messages.get.mockResolvedValue({ data });
+      const result = await call('gmail_get_message', { messageId: 'msg' });
+      expect(result.payload.parts[0].text).toBe('Message body');
+      for (const part of result.payload.parts.slice(1)) {
+        expect(part.text).toBeUndefined();
+        expect(part.body).toEqual({ size: secret.length, attachmentId: 'att' });
+        expect(part.parts?.[0]?.text).toBeUndefined();
+      }
+      expect(JSON.stringify(result)).not.toContain(secret);
+      expect(JSON.stringify(result)).not.toContain(encoded);
+      gmail.users.threads.get.mockResolvedValue({ data: { id: 'thread', messages: [data] } });
+      expect((await call('gmail_get_thread', { threadId: 'thread' })).messages[0]).toEqual(result);
+    },
+  );
   it('rejects unsupported text encoding and oversized output', async () => {
     gmail.users.messages.get.mockResolvedValue({
       data: {
