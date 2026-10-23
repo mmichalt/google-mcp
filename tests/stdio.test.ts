@@ -8,9 +8,9 @@ import { readConfig } from '../src/config.js';
 import { saveTokens } from '../src/google/auth.js';
 
 it.each([
-  { services: 'forms,drive', attachments: 'false', gmailSend: 'false', count: 14 },
+  { services: 'forms,drive', attachments: 'false', gmailSend: 'false', count: 15 },
   { services: 'tasks', attachments: 'false', gmailSend: 'false', count: 4 },
-  { services: 'forms,drive,tasks,sheets,docs,meet,calendar,gmail', attachments: 'true', gmailSend: 'true', count: 42 },
+  { services: 'forms,drive,tasks,sheets,docs,meet,calendar,gmail', attachments: 'true', gmailSend: 'true', count: 43 },
 ])(
   'discovers $count tools from compiled stdio with $services without live credentials',
   async ({ services, attachments, gmailSend, count }) => {

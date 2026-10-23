@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readConfig } from '../src/config.js';
 import type { Clients } from '../src/google/client.js';
 import { createServer } from '../src/server.js';
+import { MAX_TEXT_BYTES } from '../src/tools/register.js';
 
 let client: Client;
 const forms = {
@@ -60,11 +61,16 @@ afterEach(async () => {
 });
 
 describe('MCP Google tools', () => {
-  it('discovers all 14 tools with appropriate annotations', async () => {
+  it('discovers all 15 tools with appropriate annotations', async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(14);
+    expect(tools).toHaveLength(15);
     expect(tools.find((t) => t.name === 'forms_create')?.annotations?.idempotentHint).toBe(false);
     expect(tools.find((t) => t.name === 'forms_delete_question')?.annotations?.destructiveHint).toBe(true);
+    expect(tools.find((t) => t.name === 'forms_batch_update')?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    });
   });
   it('creates unpublished forms using only supported initial metadata', async () => {
     forms.create.mockResolvedValue({ data: { formId: 'new' } });
@@ -281,5 +287,89 @@ describe('MCP Google tools', () => {
       (await client.callTool({ name: 'forms_delete_question', arguments: { formId: 'form', itemId: 'name' } })).isError,
     ).toBe(true);
     expect(forms.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('Forms batch updates', () => {
+  const requests = [
+    { updateFormInfo: { info: { description: 'New description' }, updateMask: 'description' } },
+    { updateSettings: { settings: { quizSettings: { isQuiz: true } }, updateMask: 'quizSettings.isQuiz' } },
+    { createItem: { item: { title: 'Section', pageBreakItem: {} }, location: { index: 2 } } },
+    { moveItem: { originalLocation: { index: 2 }, newLocation: { index: 0 } } },
+    {
+      updateItem: {
+        item: { questionItem: { question: { grading: { pointValue: 3 } } } },
+        location: { index: 2 },
+        updateMask: 'questionItem.question.grading.pointValue',
+      },
+    },
+    { deleteItem: { location: { index: 0 } } },
+  ];
+  const input = { formId: 'form', expectedRevisionId: 'rev1', requests, confirmDelete: true };
+
+  it('forwards all six native request types in order and returns the API response', async () => {
+    const data = { replies: [{}, {}, { createItem: { itemId: 'section' } }, {}, {}, {}], form: { formId: 'form' } };
+    forms.batchUpdate.mockResolvedValue({ data });
+    expect(await call('forms_batch_update', { ...input, includeFormInResponse: true })).toEqual({
+      error: undefined,
+      data,
+    });
+    expect(forms.batchUpdate).toHaveBeenCalledExactlyOnceWith({
+      formId: 'form',
+      requestBody: { requests, writeControl: { requiredRevisionId: 'rev1' }, includeFormInResponse: true },
+    });
+  });
+  it('previews the exact guarded payload without writing', async () => {
+    expect((await call('forms_batch_update', { ...input, dryRun: true })).data).toEqual({
+      dryRun: true,
+      formId: 'form',
+      requests,
+      writeControl: { requiredRevisionId: 'rev1' },
+      includeFormInResponse: false,
+    });
+    expect(forms.batchUpdate).not.toHaveBeenCalled();
+  });
+  it('rejects stale and missing server revisions without writing', async () => {
+    expect(await failure('forms_batch_update', { ...input, expectedRevisionId: 'old' })).toContain('revision changed');
+    forms.get.mockResolvedValue({ data: { formId: 'form' } });
+    expect(await failure('forms_batch_update', input)).toContain('no revision');
+    expect(forms.batchUpdate).not.toHaveBeenCalled();
+  });
+  it('requires explicit delete consent even for previews, but not for other requests', async () => {
+    for (const dryRun of [false, true])
+      expect(await failure('forms_batch_update', { ...input, confirmDelete: false, dryRun })).toContain(
+        'confirmDelete=true',
+      );
+    expect(forms.get).not.toHaveBeenCalled();
+    expect(forms.batchUpdate).not.toHaveBeenCalled();
+    expect((await call('forms_batch_update', { ...input, requests: [requests[0]], confirmDelete: false })).error).toBe(
+      undefined,
+    );
+  });
+  it.each([
+    [],
+    [{}],
+    [{ unsupported: {} }],
+    [{ ...requests[0], ...requests[1] }],
+    [{ deleteItem: { location: { index: -1 } } }],
+    [{ deleteItem: { location: { index: 0.5 } } }],
+    [{ createItem: { item: {}, location: {} } }],
+    [{ updateItem: { item: {}, location: { index: 0 }, updateMask: '' } }],
+    [{ updateSettings: { settings: null, updateMask: '*' } }],
+    [{ updateFormInfo: { info: {}, updateMask: 'description', extra: true } }],
+    [{ updateFormInfo: { info: { description: 'x'.repeat(MAX_TEXT_BYTES) }, updateMask: 'description' } }],
+  ])('rejects malformed or oversized requests before API access: %#', async (...requests) => {
+    await failure('forms_batch_update', { ...input, requests });
+    expect(forms.get).not.toHaveBeenCalled();
+    expect(forms.batchUpdate).not.toHaveBeenCalled();
+  });
+  it('requires a source revision before API access', async () => {
+    await failure('forms_batch_update', { formId: 'form', requests });
+    expect(forms.get).not.toHaveBeenCalled();
+  });
+  it.each([400, 503])('does not retry rejected or ambiguous writes (%s) or leak API errors', async (status) => {
+    forms.batchUpdate.mockRejectedValue({ response: { status }, message: 'private payload' });
+    expect(await failure('forms_batch_update', input)).not.toContain('private payload');
+    expect(forms.batchUpdate).toHaveBeenCalledOnce();
   });
 });
