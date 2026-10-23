@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { forms_v1 } from 'googleapis/build/src/apis/forms/v1.js';
 import { z } from 'zod';
 import { apiCall, UserError } from '../google/client.js';
-import { id, page, register, requireValue } from './register.js';
+import { bounded, id, page, register, requireValue } from './register.js';
 
 const common = { title: z.string().min(1).max(1000), required: z.boolean().default(false) };
 const options = z
@@ -70,6 +70,17 @@ export function questionItem(
   return { itemId, title: input.title, questionItem: { question } };
 }
 const edit = { formId: id, expectedRevisionId: z.string().min(1).optional(), dryRun: z.boolean().default(false) };
+const jsonObject = z.record(z.string(), z.json());
+const location = z.strictObject({ index: z.number().int().min(0) });
+const updateMask = z.string().trim().min(1);
+const batchRequest = z.union([
+  z.strictObject({ updateFormInfo: z.strictObject({ info: jsonObject, updateMask }) }),
+  z.strictObject({ updateSettings: z.strictObject({ settings: jsonObject, updateMask }) }),
+  z.strictObject({ createItem: z.strictObject({ item: jsonObject, location }) }),
+  z.strictObject({ moveItem: z.strictObject({ originalLocation: location, newLocation: location }) }),
+  z.strictObject({ deleteItem: z.strictObject({ location }) }),
+  z.strictObject({ updateItem: z.strictObject({ item: jsonObject, location, updateMask }) }),
+]);
 export function registerForms(server: McpServer, api: forms_v1.Forms) {
   const get = (formId: string) => apiCall(() => api.forms.get({ formId }));
   async function update(
@@ -78,11 +89,16 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
     requests: forms_v1.Schema$Request[],
     dryRun: boolean,
     expected?: string,
+    includeFormInResponse?: boolean,
   ) {
     const revisionId = requireValue(form.revisionId, 'Google returned no revision. Cannot safely edit this form.');
     if (expected && expected !== revisionId)
       throw new UserError('Form revision changed. Retrieve the latest form and preview again.');
-    const requestBody = { requests, writeControl: { requiredRevisionId: revisionId } };
+    const requestBody = {
+      requests,
+      writeControl: { requiredRevisionId: revisionId },
+      ...(includeFormInResponse !== undefined ? { includeFormInResponse } : {}),
+    };
     if (dryRun) return { dryRun: true, formId, ...requestBody };
     return apiCall(() => api.forms.batchUpdate({ formId, requestBody }), false);
   }
@@ -142,6 +158,33 @@ export function registerForms(server: McpServer, api: forms_v1.Forms) {
       );
     },
     { readOnly: false, idempotent: true },
+  );
+  register(
+    server,
+    'forms_batch_update',
+    'Apply native Forms API requests in order. Requires the revision from forms_get or a preview because item locations are positional. Raw item/settings updates can change grading and question types; review updateMask carefully. Deletions require confirmDelete=true, including previews. Not idempotent; inspect the form before retrying.',
+    {
+      ...edit,
+      expectedRevisionId: z.string().min(1),
+      requests: z.array(batchRequest).min(1),
+      includeFormInResponse: z.boolean().default(false),
+      confirmDelete: z.boolean().default(false),
+    },
+    async (input) => {
+      bounded(input.requests);
+      if (input.requests.some((request) => 'deleteItem' in request) && !input.confirmDelete)
+        throw new UserError('Deleting items requires confirmDelete=true, including for previews.');
+      const form = await get(input.formId);
+      return update(
+        input.formId,
+        form,
+        input.requests,
+        input.dryRun,
+        input.expectedRevisionId,
+        input.includeFormInResponse,
+      );
+    },
+    { readOnly: false, destructive: true, idempotent: false },
   );
   register(
     server,
